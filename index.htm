@@ -1,69 +1,151 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
+<!doctype html>
+<html lang="pt-br">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Teste VLibras no Joomla</title>
-    <style>
-        body {
-            font-family: 'Arial', sans-serif;
-            background-color: #f0f8ff;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-            flex-direction: column;
-        }
-        .container {
-            text-align: center;
-            background-color: white;
-            padding: 40px;
-            border-radius: 15px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-            max-width: 600px;
-        }
-        h1 {
-            color: #2c3e50;
-            margin-bottom: 30px;
-        }
-        .refresh-btn {
-            background-color: #3498db;
-            color: white;
-            border: none;
-            padding: 12px 25px;
-            font-size: 16px;
-            border-radius: 50px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            margin-top: 20px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-        .refresh-btn:hover {
-            background-color: #2980b9;
-            transform: translateY(-2px);
-            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
-        }
-        .refresh-btn:active {
-            transform: translateY(0);
-        }
-    </style>
+  <meta charset="utf-8">
+  <title>IFBus - Localização do Ônibus</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Leaflet CSS -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    #map {
+      height: 100vh;
+      width: 100vw;
+    }
+    #status {
+      position: fixed;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(255, 255, 255, 0.9);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 14px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      z-index: 1000;
+    }
+  </style>
 </head>
 <body>
- <div vw class="enabled">
-    <div vw-access-button class="active"></div>
-    <div vw-plugin-wrapper>
-      <div class="vw-plugin-top-wrapper"></div>
-    </div>
-  </div>
-  <script src="https://vlibras.gov.br/app/vlibras-plugin.js"></script>
+  <div id="status">Carregando mapa...</div>
+  <div id="map"></div>
+
+  <!-- Leaflet JS -->
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+
+  <!-- Firebase v8 compat (mais simples para começar) -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
   <script>
-    new window.VLibras.Widget('https://vlibras.gov.br/app');
+    // 1) COLE AQUI SUA CONFIGURAÇÃO DO FIREBASE
+    // Copie do console Firebase: Configuração do app Web (firebaseConfig)
+    var firebaseConfig = {
+    apiKey: "AIzaSyDlsImo_SfKoFf8x7MTfHaVq4f30KCT-m8",
+    authDomain: "ifbus-93401.firebaseapp.com",
+    databaseURL: "https://ifbus-93401-default-rtdb.firebaseio.com",
+    projectId: "ifbus-93401",
+    storageBucket: "ifbus-93401.firebasestorage.app",
+    messagingSenderId: "532790659116",
+    appId: "1:532790659116:web:a5c6d3a6e58fd81593a989"
+    };
+
+    // 2) Inicializa Firebase
+    firebase.initializeApp(firebaseConfig);
+    var dbRef = firebase.database().ref("buses/ifbus_1");
+
+    // 3) Inicializa mapa Leaflet
+    // Ajuste para a localização base do seu campus/cidade
+    var INITIAL_LAT = -23.55052;   // exemplo: São Paulo
+    var INITIAL_LNG = -46.633308;
+    var INITIAL_ZOOM = 14;
+
+    var map = L.map("map").setView([INITIAL_LAT, INITIAL_LNG], INITIAL_ZOOM);
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> colaboradores'
+    }).addTo(map);
+
+    // Ícone do ônibus (opcional, usando ícone padrão do Leaflet por enquanto)
+    var busMarker = L.marker([INITIAL_LAT, INITIAL_LNG]).addTo(map);
+    busMarker.bindPopup("Ônibus IFBus");
+
+    var statusDiv = document.getElementById("status");
+    var firstUpdate = true;
+
+    function formatTimestamp(ts) {
+      if (!ts) return "sem horário";
+      var d = new Date(ts);
+      if (isNaN(d.getTime())) return "horário inválido";
+      var h = String(d.getHours()).padStart(2, "0");
+      var m = String(d.getMinutes()).padStart(2, "0");
+      var s = String(d.getSeconds()).padStart(2, "0");
+      return h + ":" + m + ":" + s;
+    }
+
+    // 4) Escuta mudanças no nó do ônibus
+    statusDiv.textContent = "Aguardando localização do ônibus...";
+
+    dbRef.on("value", function(snapshot) {
+      var data = snapshot.val();
+
+      if (!data || data.lat === undefined || data.lng === undefined) {
+        statusDiv.textContent = "Ainda não há localização registrada para o ônibus.";
+        return;
+      }
+
+      var lat = Number(data.lat);
+      var lng = Number(data.lng);
+
+      if (isNaN(lat) || isNaN(lng)) {
+        statusDiv.textContent = "Coordenadas inválidas recebidas do servidor.";
+        return;
+      }
+
+      // Atualiza marcador
+      busMarker.setLatLng([lat, lng]);
+
+      // Na primeira atualização, centraliza o mapa no ônibus
+      if (firstUpdate) {
+        map.setView([lat, lng], INITIAL_ZOOM);
+        firstUpdate = false;
+      }
+
+      var ts = data.timestamp || null;
+      var hora = formatTimestamp(ts);
+
+      // Verifica se o dado está muito antigo (por ex. mais de 5 minutos)
+      var msgExtra = "";
+      if (ts) {
+        var agora = Date.now();
+        var diffMin = (agora - ts) / 60000;
+        if (diffMin > 5) {
+          msgExtra = " (localização desatualizada)";
+        }
+      }
+
+      statusDiv.textContent = "Última posição do ônibus às " + hora + msgExtra;
+    }, function(error) {
+      console.error("Erro ao escutar Firebase:", error);
+      statusDiv.textContent = "Erro ao conectar ao servidor de localização.";
+    });
   </script>
-    
-    <div class="container">
-        <h1>Testando o uso do VLibras no Joomla</h1>
-        <button class="refresh-btn" onclick="window.location.reload()">Atualizar Página</button>
-    </div>
 </body>
 </html>
