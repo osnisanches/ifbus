@@ -54,6 +54,7 @@
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
   <script>
+    // Configuração Firebase
     var firebaseConfig = {
       apiKey: "AIzaSyDlsImo_SfKoFf8x7MTfHaVq4f30KCT-m8",
       authDomain: "ifbus-93401.firebaseapp.com",
@@ -65,8 +66,12 @@
     };
 
     firebase.initializeApp(firebaseConfig);
-    var dbRef = firebase.database().ref("buses/ifbus_1");
 
+    // Referências no banco
+    var busRef = firebase.database().ref("buses/ifbus_1");
+    var historyRef = firebase.database().ref("history/ifbus_1");
+
+    // Mapa
     var INITIAL_LAT = -23.55052;
     var INITIAL_LNG = -46.633308;
     var INITIAL_ZOOM = 14;
@@ -78,11 +83,20 @@
       attribution: '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> colaboradores'
     }).addTo(map);
 
-    var busMarker = L.marker([INITIAL_LAT, INITIAL_LNG]).addTo(map);
+    // Ícone de ônibus (coloque um arquivo bus-icon.png na mesma pasta do index.html)
+    var busIcon = L.icon({
+      iconUrl: "bus-icon.png",
+      iconSize: [40, 40],
+      iconAnchor: [20, 40],
+      popupAnchor: [0, -40]
+    });
+
+    var busMarker = L.marker([INITIAL_LAT, INITIAL_LNG], { icon: busIcon }).addTo(map);
     busMarker.bindPopup("Ônibus IFBus");
 
     var statusDiv = document.getElementById("status");
     var firstUpdate = true;
+    var routePolyline = null;
 
     function formatTimestamp(ts) {
       if (!ts) return "sem horário";
@@ -94,9 +108,82 @@
       return h + ":" + m + ":" + s;
     }
 
+    // Carrega e atualiza rota do dia atual
+    function subscribeTodayHistory() {
+      var now = new Date();
+      var start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      var end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+
+      var startKey = String(start.getTime());
+      var endKey = String(end.getTime() - 1);
+
+      historyRef
+        .orderByKey()
+        .startAt(startKey)
+        .endAt(endKey)
+        .on("value", function(snapshot) {
+          var raw = snapshot.val();
+
+          if (!raw) {
+            if (routePolyline) {
+              map.removeLayer(routePolyline);
+              routePolyline = null;
+            }
+            return;
+          }
+
+          var points = Object.keys(raw)
+            .map(function(key) {
+              var value = raw[key];
+              // pode ser string JSON ou objeto
+              if (typeof value === "string") {
+                try {
+                  value = JSON.parse(value);
+                } catch (e) {
+                  console.error("Erro ao interpretar ponto do histórico:", e);
+                  return null;
+                }
+              }
+              if (!value || value.lat === undefined || value.lng === undefined) {
+                return null;
+              }
+              return {
+                ts: Number(key),
+                lat: Number(value.lat),
+                lng: Number(value.lng)
+              };
+            })
+            .filter(function(p) { return p && !isNaN(p.lat) && !isNaN(p.lng); })
+            .sort(function(a, b) { return a.ts - b.ts; });
+
+          var latlngs = points.map(function(p) { return [p.lat, p.lng]; });
+
+          if (!latlngs.length) {
+            if (routePolyline) {
+              map.removeLayer(routePolyline);
+              routePolyline = null;
+            }
+            return;
+          }
+
+          if (routePolyline) {
+            routePolyline.setLatLngs(latlngs);
+          } else {
+            routePolyline = L.polyline(latlngs, {
+              color: "blue",
+              weight: 4,
+              opacity: 0.7
+            }).addTo(map);
+          }
+        }, function(error) {
+          console.error("Erro ao carregar histórico:", error);
+        });
+    }
+
+    // Escuta posição atual do ônibus
     statusDiv.textContent = "Aguardando localização do ônibus...";
 
-    dbRef.on("value", function(snapshot) {
+    busRef.on("value", function(snapshot) {
       var data = snapshot.val();
       console.log("Dados recebidos do Firebase (bruto):", data, "tipo:", typeof data);
 
@@ -149,6 +236,9 @@
       console.error("Erro ao escutar Firebase:", error);
       statusDiv.textContent = "Erro ao conectar ao servidor de localização.";
     });
+
+    // Inicia assinatura do histórico do dia
+    subscribeTodayHistory();
   </script>
 </body>
 </html>
