@@ -54,16 +54,15 @@
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
   <script>
-    // 1) COLE AQUI SUA CONFIGURAÇÃO DO FIREBASE
-    // Copie do console Firebase: Configuração do app Web (firebaseConfig)
+    // 1) Configuração do Firebase
     var firebaseConfig = {
-    apiKey: "AIzaSyDlsImo_SfKoFf8x7MTfHaVq4f30KCT-m8",
-    authDomain: "ifbus-93401.firebaseapp.com",
-    databaseURL: "https://ifbus-93401-default-rtdb.firebaseio.com",
-    projectId: "ifbus-93401",
-    storageBucket: "ifbus-93401.firebasestorage.app",
-    messagingSenderId: "532790659116",
-    appId: "1:532790659116:web:a5c6d3a6e58fd81593a989"
+      apiKey: "AIzaSyDlsImo_SfKoFf8x7MTfHaVq4f30KCT-m8",
+      authDomain: "ifbus-93401.firebaseapp.com",
+      databaseURL: "https://ifbus-93401-default-rtdb.firebaseio.com",
+      projectId: "ifbus-93401",
+      storageBucket: "ifbus-93401.firebasestorage.app",
+      messagingSenderId: "532790659116",
+      appId: "1:532790659116:web:a5c6d3a6e58fd81593a989"
     };
 
     // 2) Inicializa Firebase
@@ -83,7 +82,7 @@
       attribution: '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> colaboradores'
     }).addTo(map);
 
-    // Ícone do ônibus (opcional, usando ícone padrão do Leaflet por enquanto)
+    // Ícone do ônibus (usando ícone padrão do Leaflet por enquanto)
     var busMarker = L.marker([INITIAL_LAT, INITIAL_LNG]).addTo(map);
     busMarker.bindPopup("Ônibus IFBus");
 
@@ -105,6 +104,12 @@
 
     dbRef.on("value", function(snapshot) {
       var data = snapshot.val();
+      console.log("Dados recebidos do Firebase:", data);
+
+      // Se por algum motivo vier como { ifbus_1: { ... } }, ajusta:
+      if (data && data.ifbus_1 && data.lat === undefined && data.lng === undefined) {
+        data = data.ifbus_1;
+      }
 
       if (!data || data.lat === undefined || data.lng === undefined) {
         statusDiv.textContent = "Ainda não há localização registrada para o ônibus.";
