@@ -49,12 +49,11 @@
     crossorigin=""
   ></script>
 
-  <!-- Firebase v8 compat (mais simples para começar) -->
+  <!-- Firebase v8 compat -->
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
   <script>
-    // 1) Configuração do Firebase
     var firebaseConfig = {
       apiKey: "AIzaSyDlsImo_SfKoFf8x7MTfHaVq4f30KCT-m8",
       authDomain: "ifbus-93401.firebaseapp.com",
@@ -65,13 +64,10 @@
       appId: "1:532790659116:web:a5c6d3a6e58fd81593a989"
     };
 
-    // 2) Inicializa Firebase
     firebase.initializeApp(firebaseConfig);
     var dbRef = firebase.database().ref("buses/ifbus_1");
 
-    // 3) Inicializa mapa Leaflet
-    // Ajuste para a localização base do seu campus/cidade
-    var INITIAL_LAT = -23.55052;   // exemplo: São Paulo
+    var INITIAL_LAT = -23.55052;
     var INITIAL_LNG = -46.633308;
     var INITIAL_ZOOM = 14;
 
@@ -82,7 +78,6 @@
       attribution: '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> colaboradores'
     }).addTo(map);
 
-    // Ícone do ônibus (usando ícone padrão do Leaflet por enquanto)
     var busMarker = L.marker([INITIAL_LAT, INITIAL_LNG]).addTo(map);
     busMarker.bindPopup("Ônibus IFBus");
 
@@ -99,16 +94,22 @@
       return h + ":" + m + ":" + s;
     }
 
-    // 4) Escuta mudanças no nó do ônibus
     statusDiv.textContent = "Aguardando localização do ônibus...";
 
     dbRef.on("value", function(snapshot) {
       var data = snapshot.val();
-      console.log("Dados recebidos do Firebase:", data);
+      console.log("Dados recebidos do Firebase (bruto):", data, "tipo:", typeof data);
 
-      // Se por algum motivo vier como { ifbus_1: { ... } }, ajusta:
-      if (data && data.ifbus_1 && data.lat === undefined && data.lng === undefined) {
-        data = data.ifbus_1;
+      // Se vier como string JSON, converte para objeto
+      if (typeof data === "string") {
+        try {
+          data = JSON.parse(data);
+          console.log("Dados convertidos para objeto:", data);
+        } catch (e) {
+          console.error("Erro ao interpretar JSON vindo do Firebase:", e);
+          statusDiv.textContent = "Erro ao interpretar dados do servidor.";
+          return;
+        }
       }
 
       if (!data || data.lat === undefined || data.lng === undefined) {
@@ -124,10 +125,8 @@
         return;
       }
 
-      // Atualiza marcador
       busMarker.setLatLng([lat, lng]);
 
-      // Na primeira atualização, centraliza o mapa no ônibus
       if (firstUpdate) {
         map.setView([lat, lng], INITIAL_ZOOM);
         firstUpdate = false;
@@ -136,7 +135,6 @@
       var ts = data.timestamp || null;
       var hora = formatTimestamp(ts);
 
-      // Verifica se o dado está muito antigo (por ex. mais de 5 minutos)
       var msgExtra = "";
       if (ts) {
         var agora = Date.now();
